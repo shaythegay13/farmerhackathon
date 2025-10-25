@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 130 14% 91%;
+    --foreground: 112 13% 13%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 112 13% 13%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 112 13% 13%;
+
+    --primary: 88 67% 59%;
+    --primary-foreground: 112 13% 13%;
+
+    --secondary: 185 6% 61%;
+    --secondary-foreground: 112 13% 13%;
+
+    --muted: 130 14% 95%;
+    --muted-foreground: 112 13% 35%;
+
+    --accent: 129 51% 28%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 88 67% 59%;
+    --success-foreground: 112 13% 13%;
+
+    --warning: 43 96% 56%;
+    --warning-foreground: 112 13% 13%;
+
+    --border: 185 6% 75%;
+    --input: 130 14% 95%;
+    --ring: 88 67% 59%;
+
+    --radius: 1rem;
+    
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+    --shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.1);
+    
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    --background: 112 13% 10%;
+    --foreground: 130 14% 91%;
+
+    --card: 112 13% 13%;
+    --card-foreground: 130 14% 91%;
+
+    --popover: 112 13% 13%;
+    --popover-foreground: 130 14% 91%;
+
+    --primary: 88 67% 59%;
+    --primary-foreground: 112 13% 13%;
+
+    --secondary: 185 6% 61%;
+    --secondary-foreground: 112 13% 13%;
+
+    --muted: 112 13% 18%;
+    --muted-foreground: 185 6% 61%;
+
+    --accent: 129 51% 28%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 88 67% 59%;
+    --success-foreground: 112 13% 13%;
+
+    --warning: 43 96% 56%;
+    --warning-foreground: 112 13% 13%;
+
+    --border: 112 13% 22%;
+    --input: 112 13% 18%;
+    --ring: 88 67% 59%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+  }
+
+  input, textarea, select {
+    font-size: 15px;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .shadow-soft {
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .shadow-card {
+    box-shadow: var(--shadow-md);
+  }
+  
+  .shadow-elevated {
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .shadow-modal {
+    box-shadow: var(--shadow-xl);
+  }
+  
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+}
