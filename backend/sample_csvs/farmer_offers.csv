@@ -1,0 +1,9 @@
+produce_sku,produce_name,organic,unit,unit_size,price_per_unit,available_qty,min_order_qty,expiry_date,delivery_fee,lead_time_days
+ORG_TOMATO,Organic Tomatoes,true,lb,1,3.50,100,10,2024-01-15,15.0,1
+ORG_LETTUCE,Organic Lettuce,true,head,1,2.00,50,5,2024-01-13,15.0,1
+ORG_ONION,Organic Onions,true,lb,1,2.25,200,20,2024-01-20,15.0,1
+ORG_CARROT,Organic Carrots,true,lb,1,2.75,120,15,2024-01-18,15.0,1
+CONV_TOMATO,Conventional Tomatoes,false,lb,1,2.50,150,15,2024-01-14,12.0,2
+CONV_LETTUCE,Conventional Lettuce,false,head,1,1.50,80,8,2024-01-12,12.0,2
+CONV_ONION,Conventional Onions,false,lb,1,1.75,300,25,2024-01-25,12.0,2
+CONV_CARROT,Conventional Carrots,false,lb,1,1.95,180,20,2024-01-22,12.0,2

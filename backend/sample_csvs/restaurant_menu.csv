@@ -1,0 +1,6 @@
+menu_item_id,menu_item_name,current_price,target_food_cost_pct,expected_weekly_orders
+SALAD001,Garden Salad,12.00,0.30,50
+SALAD002,Caesar Salad,14.00,0.28,35
+SOUP001,Tomato Soup,8.00,0.25,40
+SANDWICH001,BLT Sandwich,10.00,0.32,25
+PASTA001,Vegetable Pasta,13.00,0.26,30
