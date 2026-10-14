@@ -214,8 +214,21 @@ Focus on maintaining profitability while being fair to customers.
     
     def _fallback_explanation(self, purchase_plan: List[Dict], savings_amount: float, 
                             constraints: Dict) -> str:
-        """Fallback explanation when LLM is unavailable"""
-        return f"Optimized sourcing plan saves ${savings_amount:.2f} weekly by selecting the most cost-effective suppliers while meeting freshness and quality requirements."
+        """Fallback explanation when LLM is unavailable.
+
+        savings_amount is baseline cost minus this plan. A negative value is a cost increase.
+        """
+        if savings_amount < -0.005:
+            return (
+                f"This plan costs ${abs(savings_amount):.2f} more per week than the unconstrained baseline "
+                "while meeting freshness and quality requirements."
+            )
+        if savings_amount > 0.005:
+            return (
+                f"This plan saves ${savings_amount:.2f} per week versus the unconstrained baseline "
+                "while meeting freshness and quality requirements."
+            )
+        return "This plan matches the unconstrained baseline weekly cost."
 
 # Global LLM service instance
 llm_service = LLMService()

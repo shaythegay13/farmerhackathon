@@ -41,6 +41,24 @@ interface DemandItem {
   safetyStock: number;
 }
 
+/** savings_vs_baseline is baseline cost minus plan cost. Negative means the plan costs more. */
+function describePlanDelta(delta: number): { label: string; increased: boolean } {
+  const amount = Math.abs(delta).toFixed(2);
+  if (delta < -0.005) {
+    return {
+      label: `Cost increase vs baseline: $${amount}/week`,
+      increased: true,
+    };
+  }
+  if (delta > 0.005) {
+    return {
+      label: `Savings vs baseline: $${amount}/week`,
+      increased: false,
+    };
+  }
+  return { label: "No change vs baseline", increased: false };
+}
+
 export default function RestaurantPortal() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [menuItems, setMenuItems] = useState<RestaurantMenuItem[]>([]);
@@ -303,7 +321,7 @@ export default function RestaurantPortal() {
         setOptimizationResult(response.data);
         toast({
           title: "✅ Optimization complete!",
-          description: `Savings: $${Math.abs(response.data.savings_vs_baseline).toFixed(2)}/week`,
+          description: describePlanDelta(response.data.savings_vs_baseline).label,
         });
       } else {
         toast({
@@ -407,9 +425,12 @@ export default function RestaurantPortal() {
 
   const acceptPurchasePlan = () => {
     setAcceptedPlan(true);
+    const delta = optimizationResult
+      ? describePlanDelta(optimizationResult.savings_vs_baseline).label
+      : "No plan total is available.";
     toast({
       title: "✅ Purchase plan accepted!",
-      description: "You're saving $412/week. Export your purchase order below.",
+      description: `${delta}. Export your purchase order below.`,
     });
   };
 
@@ -640,9 +661,15 @@ export default function RestaurantPortal() {
           <CardHeader>
             <div className="flex items-center gap-3">
               <CardTitle>AI Suggested Purchase Plan</CardTitle>
-              <Badge className="bg-success/20 text-success-foreground gap-2 px-3 py-1">
+              <Badge
+                className={
+                  describePlanDelta(optimizationResult.savings_vs_baseline).increased
+                    ? "bg-destructive/15 text-destructive gap-2 px-3 py-1"
+                    : "bg-success/20 text-success-foreground gap-2 px-3 py-1"
+                }
+              >
                 <DollarSign className="h-3 w-3" />
-                Savings vs baseline: ${Math.abs(optimizationResult.savings_vs_baseline).toFixed(2)}/week
+                {describePlanDelta(optimizationResult.savings_vs_baseline).label}
               </Badge>
               <WhyPopover
                 reasons={[optimizationResult.baseline_explanation]}
