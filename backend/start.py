@@ -30,7 +30,11 @@ def main():
     backend_dir = Path(__file__).resolve().parent
     repo_root = backend_dir.parent
     os.chdir(backend_dir)
+    sys.path.insert(0, str(backend_dir))
 
+    from app.console import configure_stdio
+
+    configure_stdio()
     _ensure_dependencies()
 
     from dotenv import load_dotenv

@@ -7,7 +7,10 @@ try:
 except ImportError:
     genai = None
 
+from app.console import configure_stdio
 from app.models import ProduceOffer, Ingredient
+
+configure_stdio()
 
 logger = logging.getLogger(__name__)
 

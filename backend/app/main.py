@@ -6,7 +6,10 @@ from datetime import date, datetime
 from typing import List, Optional
 import os
 from pathlib import Path
+from app.console import configure_stdio
 from dotenv import load_dotenv
+
+configure_stdio()
 
 # Repo-root .env, then backend/.env so a local backend file can override.
 _BACKEND_DIR = Path(__file__).resolve().parents[1]

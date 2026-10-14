@@ -7,6 +7,10 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from app.console import configure_stdio
+
+configure_stdio()
+
 def test_imports():
     """Test that core modules can be imported"""
     try:
