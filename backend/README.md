@@ -14,7 +14,9 @@ AI-powered platform connecting farmers and restaurants for local food sourcing.
    ```bash
    python start.py
    ```
-   
+
+   The API listens on port 8000 unless `PORT` is set. The frontend uses the same default (`http://localhost:8000`), overridable with `VITE_API_BASE_URL`.
+
    Or manually:
    ```bash
    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
