@@ -104,7 +104,7 @@ Required columns:
 
 - **API**: FastAPI with automatic OpenAPI documentation
 - **Database**: SQLite with SQLAlchemy ORM
-- **Processing**: Pandas for CSV parsing and data manipulation
+- **Processing**: CSV parsing in `app/services/intelligent_parsing.py` (header matching, with Gemini column mapping when a key is set)
 - **Optimization**: Greedy algorithm for purchase planning
 - **AI/LLM**: Gemini 3.6 Flash for semantic matching and natural language explanations (optional)
 - **Storage**: File-based CSV storage in `/data/uploads` and `/data/exports`
