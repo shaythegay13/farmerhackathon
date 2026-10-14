@@ -124,6 +124,23 @@ class YieldlyApiService {
     });
   }
 
+  async sendBidsNow(
+    farmId: string | number,
+    radiusMiles: number
+  ): Promise<ApiResponse<{
+    success: boolean;
+    restaurants_reached: number;
+    message: string;
+  }>> {
+    const formData = new FormData();
+    formData.append('farm_id', String(farmId));
+    formData.append('radius_miles', String(radiusMiles));
+    return this.request('/farmer/send_bids_now', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
   async uploadFarmerOffers(
     csvFile: File,
     farmId: string,

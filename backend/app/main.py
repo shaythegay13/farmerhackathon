@@ -116,16 +116,25 @@ async def process_farmer_data(
 
 # Old upload endpoints removed - using intelligent parsing endpoints instead
 
+def _farm_for_bid(db: Session, farm_id: str) -> Optional[Farm]:
+    """Resolve a numeric primary key or the string farm_id such as FARM001."""
+    token = (farm_id or "").strip()
+    if token.isdigit():
+        farm = db.query(Farm).filter(Farm.id == int(token)).first()
+        if farm:
+            return farm
+    return db.query(Farm).filter(Farm.farm_id == token).first()
+
+
 @app.post("/farmer/send_bids_now", response_model=SendBidsResponse)
 async def send_bids_now(
-    farm_id: int = Form(...),
+    farm_id: str = Form(...),
     radius_miles: int = Form(10),
     db: Session = Depends(get_db)
 ):
-    """Simulate sending bids to nearby restaurants"""
+    """Count restaurants that share the farm ZIP prefix. This does not notify anyone."""
     try:
-        # Get farm
-        farm = db.query(Farm).filter(Farm.id == farm_id).first()
+        farm = _farm_for_bid(db, farm_id)
         if not farm:
             raise HTTPException(status_code=404, detail="Farm not found")
         
