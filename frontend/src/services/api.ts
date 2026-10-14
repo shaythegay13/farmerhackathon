@@ -1,5 +1,6 @@
-// API service for connecting frontend to Yieldly backend
-const API_BASE_URL = 'http://localhost:8001';
+// API service for connecting frontend to Yieldly backend.
+// Defaults to the same port start.py and uvicorn use. Override with VITE_API_BASE_URL.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -79,12 +80,14 @@ class YieldlyApiService {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
+      const headers = new Headers(options.headers);
+      if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
+      }
+
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
         ...options,
+        headers,
       });
 
       if (!response.ok) {
@@ -109,6 +112,18 @@ class YieldlyApiService {
   }
 
   // Farmer endpoints
+  async processFarmerData(csvData: Record<string, unknown>[]): Promise<ApiResponse<{
+    success: boolean;
+    message: string;
+    offers: Record<string, unknown>[];
+    mapping_info?: unknown;
+  }>> {
+    return this.request('/farmer/process_data', {
+      method: 'POST',
+      body: JSON.stringify({ csv_data: csvData }),
+    });
+  }
+
   async uploadFarmerOffers(
     csvFile: File,
     farmId: string,
@@ -128,6 +143,19 @@ class YieldlyApiService {
   }
 
   // Restaurant endpoints
+  async processRestaurantData(csvData: Record<string, unknown>[]): Promise<ApiResponse<{
+    success: boolean;
+    message: string;
+    menu_items: Record<string, unknown>[];
+    ingredients: Record<string, unknown>[];
+    mapping_info?: unknown;
+  }>> {
+    return this.request('/restaurant/process_data', {
+      method: 'POST',
+      body: JSON.stringify({ csv_data: csvData }),
+    });
+  }
+
   async uploadRestaurantMenu(
     menuCsvFile: File,
     ingredientsCsvFile: File,

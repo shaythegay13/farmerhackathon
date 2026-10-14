@@ -5,10 +5,14 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime
 from typing import List, Optional
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Repo-root .env, then backend/.env so a local backend file can override.
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+_REPO_ROOT = _BACKEND_DIR.parent
+load_dotenv(_REPO_ROOT / ".env")
+load_dotenv(_BACKEND_DIR / ".env", override=True)
 
 from app.models import get_db, Farm, ProduceOffer, Restaurant, MenuItem, Ingredient
 from app.schemas import (
@@ -465,4 +469,5 @@ async def load_sample_data():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    _port = int(os.environ.get("PORT", "").strip() or "8000")
+    uvicorn.run(app, host="0.0.0.0", port=_port)
