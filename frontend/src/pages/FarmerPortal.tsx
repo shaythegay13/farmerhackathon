@@ -141,7 +141,7 @@ export default function FarmerPortal() {
         let value = values[index] || '';
         
         // Convert numeric fields
-        if (['unit_size', 'price_per_unit', 'available_qty', 'min_order_qty', 'delivery_fee_flat', 'lead_time_days'].includes(header)) {
+        if (['unit_size', 'price_per_unit', 'available_qty', 'min_order_qty', 'delivery_fee_flat', 'delivery_fee', 'lead_time_days'].includes(header)) {
           value = parseFloat(value) || 0;
         }
         
@@ -152,6 +152,10 @@ export default function FarmerPortal() {
         
         obj[header] = value;
       });
+      // Sample farmer_offers.csv names the column delivery_fee, not delivery_fee_flat.
+      if (typeof obj.delivery_fee_flat !== "number" && obj.delivery_fee !== undefined && obj.delivery_fee !== "") {
+        obj.delivery_fee_flat = typeof obj.delivery_fee === "number" ? obj.delivery_fee : parseFloat(obj.delivery_fee) || 0;
+      }
       return obj;
     });
   };
@@ -193,12 +197,23 @@ export default function FarmerPortal() {
     );
   }, [offers]);
 
-  const calculateLandedCost = (offer: FarmerOffer) => {
-    if (!offer || typeof offer.price_per_unit !== 'number' || typeof offer.unit_size !== 'number' || typeof offer.delivery_fee_flat !== 'number' || typeof offer.min_order_qty !== 'number') {
+  const deliveryFeeOf = (offer: FarmerOffer & { delivery_fee?: number | string }) => {
+    if (typeof offer?.delivery_fee_flat === "number") return offer.delivery_fee_flat;
+    if (typeof offer?.delivery_fee === "number") return offer.delivery_fee;
+    if (typeof offer?.delivery_fee === "string" && offer.delivery_fee.trim() !== "") {
+      const parsed = parseFloat(offer.delivery_fee);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+
+  const calculateLandedCost = (offer: FarmerOffer & { delivery_fee?: number | string }) => {
+    const deliveryFee = deliveryFeeOf(offer);
+    if (!offer || typeof offer.price_per_unit !== 'number' || typeof offer.unit_size !== 'number' || deliveryFee === null || typeof offer.min_order_qty !== 'number' || offer.unit_size === 0 || offer.min_order_qty === 0) {
       return '0.00';
     }
     const allocatedQty = offer.min_order_qty * offer.unit_size;
-    const deliveryCostPerKg = offer.delivery_fee_flat / allocatedQty;
+    const deliveryCostPerKg = deliveryFee / allocatedQty;
     const unitCostPerKg = offer.price_per_unit / offer.unit_size;
     return (unitCostPerKg + deliveryCostPerKg).toFixed(2);
   };
@@ -360,7 +375,7 @@ export default function FarmerPortal() {
                                 ${calculateLandedCost(offer)}
                                 <WhyPopover
                                   reasons={[
-                                    `Landed cost = ($${offer.price_per_unit} / ${offer.unit_size}kg) + ($${offer.delivery_fee_flat} delivery / ${offer.min_order_qty * offer.unit_size}kg allocated)`,
+                                    `Landed cost = ($${offer.price_per_unit} / ${offer.unit_size}kg) + ($${deliveryFeeOf(offer) ?? 0} delivery / ${offer.min_order_qty * offer.unit_size}kg allocated)`,
                                   ]}
                                 />
                               </div>
