@@ -106,12 +106,12 @@ Required columns:
 - **Database**: SQLite with SQLAlchemy ORM
 - **Processing**: Pandas for CSV parsing and data manipulation
 - **Optimization**: Greedy algorithm for purchase planning
-- **AI/LLM**: Gemini 2.0 Flash for semantic matching and natural language explanations
+- **AI/LLM**: Gemini 3.6 Flash for semantic matching and natural language explanations (optional)
 - **Storage**: File-based CSV storage in `/data/uploads` and `/data/exports`
 
 ## LLM Features (Optional)
 
-The system includes optional LLM-powered features using Google's Gemini 2.0 Flash model:
+The system includes optional LLM-powered features using Google's Gemini 3.6 Flash model (`gemini-3.6-flash`). Override the model with `GEMINI_MODEL`. The API still starts when `google-generativeai` is not installed or `GEMINI_API_KEY` is unset, and falls back to exact matching.
 
 ### Setup
 1. Get a Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)

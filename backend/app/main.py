@@ -65,7 +65,7 @@ async def llm_status():
     """Check LLM service status"""
     return {
         "enabled": llm_service.enabled,
-        "model": "gemini-2.0-flash-exp" if llm_service.enabled else None,
+        "model": llm_service.model_name if llm_service.enabled else None,
         "api_key_configured": bool(llm_service.api_key)
     }
 
