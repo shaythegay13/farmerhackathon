@@ -230,7 +230,9 @@ export default function RestaurantPortal() {
       if (!menuItem) return;
 
       const rawQty = ing.recipe_qty_per_portion * menuItem.expected_weekly_orders;
-      const adjustedQty = rawQty / (ing.yield_pct / 100);
+      // Sample data and the API store yield as a fraction (0.95). Values above 1 are percents.
+      const yieldFraction = ing.yield_pct > 1 ? ing.yield_pct / 100 : ing.yield_pct;
+      const adjustedQty = yieldFraction > 0 ? rawQty / yieldFraction : rawQty;
 
       const existing = demandMap.get(ing.produce_sku);
       if (existing) {
