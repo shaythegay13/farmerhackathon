@@ -149,7 +149,10 @@ async def send_bids_now(
         return SendBidsResponse(
             success=True,
             restaurants_reached=restaurants_in_area,
-            message=f"Bids sent to {restaurants_in_area} restaurants in {radius_miles} mile radius"
+            message=(
+                f"{restaurants_in_area} restaurants share this farm's ZIP prefix "
+                f"({radius_miles} mile radius setting). Nothing was emailed."
+            )
         )
         
     except Exception as e:
