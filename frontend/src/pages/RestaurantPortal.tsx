@@ -240,38 +240,30 @@ export default function RestaurantPortal() {
     });
   };
 
-  const calculateDemand = () => {
-    const demandMap = new Map<string, DemandItem>();
+  const calculateDemand = async () => {
+    const response = await yieldlyApi.weeklyDemand(menuItems, ingredients, 0.05);
+    if (!response.success || !response.data) {
+      toast({
+        title: "Could not calculate demand",
+        description: response.error || "The API did not return demand for this menu.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    ingredients.forEach((ing) => {
-      const menuItem = menuItems.find((m) => m.menu_item_id === ing.menu_item_id);
-      if (!menuItem) return;
-
-      const rawQty = ing.recipe_qty_per_portion * menuItem.expected_weekly_orders;
-      // Sample data and the API store yield as a fraction (0.95). Values above 1 are percents.
-      const yieldFraction = ing.yield_pct > 1 ? ing.yield_pct / 100 : ing.yield_pct;
-      const adjustedQty = yieldFraction > 0 ? rawQty / yieldFraction : rawQty;
-
-      const existing = demandMap.get(ing.produce_sku);
-      if (existing) {
-        existing.totalKg += adjustedQty;
-      } else {
-        demandMap.set(ing.produce_sku, {
-          sku: ing.produce_sku,
-          ingredient: ing.ingredient_name,
-          totalKg: adjustedQty,
-          substitutable: ing.substitutable,
-          requiresOrganic: ing.requires_organic,
-          safetyStock: 10,
-        });
-      }
-    });
-
-    setDemand(Array.from(demandMap.values()));
+    const rows: DemandItem[] = response.data.demand.map((line) => ({
+      sku: line.produce_sku,
+      ingredient: line.ingredient_name,
+      totalKg: line.total_kg,
+      substitutable: line.substitutable,
+      requiresOrganic: line.requires_organic,
+      safetyStock: Math.round(line.safety_stock_pct * 100),
+    }));
+    setDemand(rows);
     fetchBids();
     toast({
       title: "✅ Demand calculated!",
-      description: `${demandMap.size} ingredients ready. Check out bids below to find the best deals.`,
+      description: `${rows.length} ingredients from this menu, including 5% safety stock. Optimize uses the same rows.`,
     });
   };
 
@@ -315,7 +307,13 @@ export default function RestaurantPortal() {
         local_only: false, // Could be based on filters.localRadius
       };
 
-      const response = await yieldlyApi.optimizePlan(restaurantId, constraints, 0.05);
+      const response = await yieldlyApi.optimizePlan(
+        restaurantId,
+        constraints,
+        0.05,
+        menuItems,
+        ingredients
+      );
 
       if (response.success && response.data) {
         setOptimizationResult(response.data);

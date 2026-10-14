@@ -21,10 +21,13 @@ from app.models import get_db, Farm, ProduceOffer, Restaurant, MenuItem, Ingredi
 from app.schemas import (
     UploadResponse, BidsResponse, OptimizationResponse, ExportResponse, 
     SendBidsResponse, BidOffer, PurchasePlanItem, MenuNudge, Constraints,
-    OptimizationPayload
+    OptimizationPayload, WeeklyDemandRequest, WeeklyDemandResponse,
 )
 # Old parsing system removed - using intelligent parsing instead
-from app.services.demand import compute_weekly_demand, get_menu_items_with_ingredients
+from app.services.demand import (
+    compute_weekly_demand, compute_weekly_demand_from_rows,
+    demand_lines, get_menu_items_with_ingredients,
+)
 from app.services.offers import (
     feasible_offers, get_all_offers, calculate_baseline_cost, 
     landed_cost_per_kg
@@ -239,6 +242,43 @@ async def get_restaurant_bids(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/restaurant/weekly_demand", response_model=WeeklyDemandResponse)
+async def weekly_demand(payload: WeeklyDemandRequest):
+    """Demand for the menu currently on screen. Same helper the optimizer uses."""
+    if not payload.menu_items or not payload.ingredients:
+        raise HTTPException(status_code=400, detail="Menu items and ingredients are required")
+    return WeeklyDemandResponse(
+        demand=demand_lines(payload.menu_items, payload.ingredients, payload.safety_stock_pct)
+    )
+
+
+def _menu_views(payload: OptimizationPayload):
+    """Objects compute_nudges can read when the plan uses on-screen rows."""
+    from types import SimpleNamespace
+
+    menus = [
+        SimpleNamespace(
+            menu_item_id=row.menu_item_id,
+            menu_item_name=row.menu_item_name,
+            current_price=row.current_price,
+            target_food_cost_pct=row.target_food_cost_pct,
+            expected_weekly_orders=row.expected_weekly_orders,
+        )
+        for row in payload.menu_items or []
+    ]
+    ingredients = []
+    for row in payload.ingredients or []:
+        yield_pct = row.yield_pct / 100.0 if row.yield_pct > 1 else row.yield_pct
+        ingredients.append(SimpleNamespace(
+            menu_item_id=row.menu_item_id,
+            produce_sku=row.produce_sku,
+            ingredient_name=row.ingredient_name,
+            recipe_qty_per_portion_kg=row.recipe_qty_per_portion,
+            yield_pct=yield_pct,
+        ))
+    return menus, ingredients
+
+
 @app.post("/restaurant/optimize_plan", response_model=OptimizationResponse)
 async def optimize_purchase_plan(
     payload: OptimizationPayload,
@@ -256,8 +296,13 @@ async def optimize_purchase_plan(
         if not restaurant:
             raise HTTPException(status_code=404, detail="Restaurant not found")
         
-        # Compute weekly demand
-        demand_by_sku = compute_weekly_demand(restaurant_id, db, safety_stock_pct)
+        use_screen_menu = bool(payload.menu_items) and bool(payload.ingredients)
+        if use_screen_menu:
+            demand_by_sku = compute_weekly_demand_from_rows(
+                payload.menu_items, payload.ingredients, safety_stock_pct
+            )
+        else:
+            demand_by_sku = compute_weekly_demand(restaurant_id, db, safety_stock_pct)
         
         if not demand_by_sku:
             raise HTTPException(status_code=400, detail="No menu items or ingredients found")
@@ -279,9 +324,12 @@ async def optimize_purchase_plan(
         # Get unit costs for pricing
         unit_cost_by_sku = get_unit_cost_by_sku(plan_rows)
         
-        # Get menu items and ingredients for pricing
-        menu_items = db.query(MenuItem).filter(MenuItem.restaurant_id == restaurant_id).all()
-        ingredients = db.query(Ingredient).filter(Ingredient.restaurant_id == restaurant_id).all()
+        # Price nudges follow the same menu the demand table used.
+        if use_screen_menu:
+            menu_items, ingredients = _menu_views(payload)
+        else:
+            menu_items = db.query(MenuItem).filter(MenuItem.restaurant_id == restaurant_id).all()
+            ingredients = db.query(Ingredient).filter(Ingredient.restaurant_id == restaurant_id).all()
         
         # Compute menu nudges
         nudges = compute_nudges(menu_items, ingredients, unit_cost_by_sku)

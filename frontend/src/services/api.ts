@@ -210,15 +210,44 @@ class YieldlyApiService {
     return this.request<BidsResponse>(`/restaurant/bids?${params}`);
   }
 
+  async weeklyDemand(
+    menuItems: object[],
+    ingredients: object[],
+    safetyStockPct: number = 0.05
+  ): Promise<ApiResponse<{
+    demand: Array<{
+      produce_sku: string;
+      ingredient_name: string;
+      total_kg: number;
+      substitutable: boolean;
+      requires_organic: boolean;
+      safety_stock_pct: number;
+    }>;
+  }>> {
+    return this.request('/restaurant/weekly_demand', {
+      method: 'POST',
+      body: JSON.stringify({
+        menu_items: menuItems,
+        ingredients,
+        safety_stock_pct: safetyStockPct,
+      }),
+    });
+  }
+
   async optimizePlan(
     restaurantId: number,
     constraints: Constraints,
-    safetyStockPct: number = 0.05
+    safetyStockPct: number = 0.05,
+    menuItems?: object[],
+    ingredients?: object[]
   ): Promise<ApiResponse<OptimizationResponse>> {
     const payload = {
       restaurant_id: restaurantId,
       constraints,
       safety_stock_pct: safetyStockPct,
+      ...(menuItems && ingredients
+        ? { menu_items: menuItems, ingredients }
+        : {}),
     };
 
     return this.request<OptimizationResponse>('/restaurant/optimize_plan', {
