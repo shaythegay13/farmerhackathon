@@ -8,15 +8,17 @@ Git history has one author, [Krishiv Seth](mailto:krishivseth05@gmail.com): the 
 
 ## Screenshots
 
-Farmer portal after **Sample Data**. The offer rows are parsed in the browser from `backend/sample_csvs/farmer_offers.csv`. The performance card (14 restaurants, 32% acceptance, top SKU) is hardcoded placeholder copy.
+Farmer portal after the sample CSV loads. Organic Tomatoes show a landed cost of **$5.00/kg** (`delivery_fee` of $15 spread over the minimum order). **Send Bids Now** asked the API how many restaurants share farm `FARM001`'s ZIP prefix; the card shows **3**. Acceptance is labeled demo because bid outcomes are not stored. The largest row in this CSV is Conventional Onions.
 
-![Farmer portal with sample offers loaded](docs/screenshots/farmer-portal.png)
+![Farmer portal with a real landed cost and restaurant count](docs/screenshots/farmer-portal.png)
 
-Restaurant portal after **Sample Data**, **Calculate Weekly Demand**, and **AI Optimize Plan**. The bids and the purchase plan are responses from the API on port 8000. The green badge reads “Savings vs baseline: $79.42/week”. On this same sample, `POST /restaurant/optimize_plan` returned `savings_vs_baseline` of about **-79.42**: the constrained plan cost more than the unconstrained baseline, and the UI prints `Math.abs`. See [Known issues](#known-issues).
+Restaurant demand for the sample menu, including 5% safety stock. Organic Lettuce is **8.29 kg**. Organic Carrots are on the list because the on-screen CSV includes them.
 
-![Restaurant bids from the API](docs/screenshots/restaurant-bids.png)
+![Weekly demand calculated from the menu on screen](docs/screenshots/restaurant-demand.png)
 
-![Purchase plan returned by the API](docs/screenshots/restaurant-purchase-plan.png)
+The purchase plan uses those same rows. The badge says **Cost increase vs baseline: $363.76/week** because minimum order quantities buy more than the menu needs, so `savings_vs_baseline` is negative. Lettuce in the plan is 8.29 kg, the same figure as the demand table. Onion and carrot quantities are higher because of minimum orders.
+
+![Purchase plan labeled as a cost increase](docs/screenshots/restaurant-purchase-plan.png)
 
 ## What the app actually does
 
@@ -26,19 +28,19 @@ Restaurant portal after **Sample Data**, **Calculate Weekly Demand**, and **AI O
 
 - Upload a produce CSV. With `GEMINI_API_KEY` set, column mapping can use Gemini. Without it, mapping is substring matching on the headers.
 - **Sample Data** loads the database seed and then shows `farmer_offers.csv` in the table.
-- Auto-bid radius, lead time, and organic preference are controls on the page. **Send Bids Now** only shows a toast. It does not call `POST /farmer/send_bids_now`.
-- **View Auto-Bid Rules** saves nothing. The dialog says the rule was created in demo mode.
+- **Send Bids Now** calls `POST /farmer/send_bids_now` with the radius slider and farm id `FARM001` (or a `farm_id` on the loaded rows). The API counts restaurants that share that farm's ZIP prefix. It does not email anyone. The performance card shows that count. Acceptance rate is labeled demo. The third line is the largest offer in the loaded list.
+- Auto-send and the organic preference switch are not saved. **View Auto-Bid Rules** saves nothing and says the rule was created in demo mode. The status column is labeled demo.
 
 **Restaurant portal** (`/restaurant`)
 
 - **Sample Data** loads the database seed, then shows `restaurant_menu.csv` (5 menu items) and `restaurant_ingredients.csv` (11 ingredients) in the page.
-- **Calculate Weekly Demand** runs in the browser from those rows (recipe quantity × expected orders ÷ yield).
+- **Calculate Weekly Demand** calls `POST /restaurant/weekly_demand` with the menu and ingredients on screen, including 5% safety stock.
 - **Bids in Your Area** calls `GET /restaurant/bids` for restaurant id `1`.
-- **AI Optimize Plan** calls `POST /restaurant/optimize_plan`. Without a Gemini key, the explanation is the built-in fallback sentence, not a model response.
+- **AI Optimize Plan** calls `POST /restaurant/optimize_plan` with those same menu rows. Without a Gemini key, the explanation is the built-in fallback sentence. If the plan costs more than the unconstrained baseline, the badge says cost increase instead of savings. Accepting the plan repeats that same figure.
 - Purchase-order and price-change export buttons call the export endpoints and download a CSV.
 - The market-intelligence panel calls `POST /restaurant/analyze_market_trends`. Without `BRAVE_SEARCH_API_KEY`, that service uses its built-in stand-in figures.
 
-The weekly demand table and the purchase plan are not the same calculation. Demand is computed in the browser from the sample CSVs. The optimizer reads SQLite for restaurant id `1`, which the seed fills with 3 menu items and 6 ingredients (Garden Salad, Caesar Salad, Tomato Soup). The sample CSVs also include a BLT and extra ingredients.
+Weekly demand and the purchase plan both start from the menu on screen. A plan quantity can still be higher than that demand when a farm's minimum order is larger than the menu needs. Offers themselves still come from the SQLite seed, whose expiry dates are relative to today. The farmer table is the CSV, whose expiry dates are January 2024.
 
 ## Setup
 
@@ -115,10 +117,11 @@ CORS allows `http://localhost:8080` and `http://127.0.0.1:8080`.
 | `POST` | `/dev/load_sample_data` | Replace SQLite rows with the seed |
 | `GET` | `/dev/sample_csvs/{filename}` | Download a file from `backend/sample_csvs/` |
 | `POST` | `/farmer/process_data` | Map and parse a farmer CSV payload |
-| `POST` | `/farmer/send_bids_now` | Count restaurants and return a simulated “bids sent” message |
+| `POST` | `/farmer/send_bids_now` | Count restaurants that share the farm ZIP prefix. Does not notify them. |
 | `POST` | `/restaurant/process_data` | Map and parse a restaurant CSV payload |
+| `POST` | `/restaurant/weekly_demand` | Kg by SKU for the menu rows in the request |
 | `GET` | `/restaurant/bids` | Feasible offers for a restaurant |
-| `POST` | `/restaurant/optimize_plan` | Greedy purchase plan and menu price nudges |
+| `POST` | `/restaurant/optimize_plan` | Greedy purchase plan. Uses menu rows in the body when they are sent. |
 | `POST` | `/restaurant/export_po` | Purchase-order CSV |
 | `POST` | `/restaurant/export_price_changes` | Price-change CSV |
 | `POST` | `/restaurant/analyze_market_trends` | Market panel data |
@@ -131,22 +134,20 @@ From `backend/`, with dependencies installed and `GEMINI_API_KEY` unset:
 
 | Check | Result |
 | --- | --- |
-| `python test_core.py` | **2 of 4 passed.** Optimization and pricing passed. Import and unit-conversion tests still load `app.services.parsing`, which is not in the tree. |
+| `python test_core.py` | **5 of 5 passed.** Imports, unit conversions, optimization, on-screen demand, and pricing. |
 | Import `app.main` with no API key | Server object loads. LLM `enabled` is false. Configured model name is `gemini-3.6-flash`. |
 | Import while blocking `google.generativeai` | Does not raise. LLM stays disabled. |
 | Print emoji to a strict cp1252 stdout | Raises `UnicodeEncodeError` before `configure_stdio()`, prints replacement characters after it. |
 | `uvicorn` on port 8000, no Gemini key | `GET /healthz` healthy. `GET /llm/status` reports the key is not configured. `POST /dev/load_sample_data`, `GET /restaurant/bids?restaurant_id=1`, and `POST /restaurant/optimize_plan` returned 200. |
 | `npm run build` in `frontend/` | Succeeds (`yieldly@0.0.0`). Vite warns that the JS chunk is over 500 kB. |
-| Browser at `http://127.0.0.1:8080` | Sample Data, weekly demand, bids (Green Valley Organic Farm and others), and a purchase plan all rendered. The API log showed those calls on port 8000. |
+| Browser at `http://127.0.0.1:8080` | Farmer landed cost for Organic Tomatoes was $5.00. Send Bids Now showed 3 restaurants. Demand listed Organic Lettuce at 8.29 kg and Organic Carrots. The plan badge said cost increase of $363.76/week and included carrots. No Gemini key. |
 
 ## Known issues
 
-- `backend/test_core.py` still imports the removed `app.services.parsing` module, so two tests fail.
-- Farmer **Send Bids Now**, the performance card, the “JD” avatar, and the auto-bid rule dialog are demo UI. They are not backed by saved data.
-- Accepting a purchase plan toasts a hardcoded “You're saving $412/week”, which is not the plan total.
-- The savings badge uses `Math.abs`. A negative `savings_vs_baseline` (the sample plan) is shown as money saved.
-- `backend/sample_csvs/farmer_offers.csv` uses January 2024 expiry dates and a `delivery_fee` column. The farmer table’s landed $/kg reads `delivery_fee_flat`, so those cells stay `$0.00`. The database seed uses dates relative to today and is what the bids endpoint returns.
-- The restaurant page’s demand table is the CSV. The optimizer uses the smaller SQLite seed for restaurant id `1`.
+- `backend/sample_csvs/farmer_offers.csv` expiry dates are January 2024, so the farmer expiry badges count backward from those dates. The bid list uses the database seed, whose dates are relative to today.
+- The farmer table treats `unit_size` as kilograms. The sample file's unit is `lb` with `unit_size` 1, and the cell is labeled `lb (1kg)`. Landed $/kg uses that 1 kg figure.
+- **Send Bids Now** with no `farm_id` on the row uses `FARM001`. Auto-send, organic preference, the “JD” avatar, and auto-bid rules are still not saved.
+- Purchase-order export still rebuilds a plan from the SQLite seed, not from the on-screen menu.
 - Upload templates point at `/templates/...`, and those files are not in `frontend/public`.
 - There is no authentication. The restaurant screen always uses restaurant id `1`.
 - The help button does nothing.
@@ -155,9 +156,7 @@ From `backend/`, with dependencies installed and `GEMINI_API_KEY` unset:
 
 ## Next steps
 
-- Call `POST /farmer/send_bids_now` from **Send Bids Now**, and replace the hardcoded performance numbers.
-- Show the sign of `savings_vs_baseline` instead of the absolute value, and use the real plan delta in the accept toast.
-- Make weekly demand and optimize read the same rows (either send the on-screen menu to the API, or render the seed).
-- Map `delivery_fee` in the sample farmer CSV, and refresh those expiry dates.
-- Point `test_core.py` at the services that exist now.
+- Refresh the sample farmer CSV dates, and convert `lb` to kilograms in the farmer table.
+- Point purchase-order export at the plan the page just accepted.
+- Persist auto-bid rules, or remove the controls that do not save.
 - Add auth before anyone treats this as more than a local demo.
