@@ -7,7 +7,6 @@ import os
 import requests
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-import google.generativeai as genai
 from app.services.llm import llm_service
 from app.services.cpi_forecast import cpi_forecast_service
 

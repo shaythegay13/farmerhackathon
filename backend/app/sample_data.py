@@ -2,7 +2,10 @@ import os
 import sys
 from datetime import date, timedelta
 from sqlalchemy.orm import Session
+from app.console import configure_stdio
 from app.models import Base, engine, Farm, ProduceOffer, Restaurant, MenuItem, Ingredient
+
+configure_stdio()
 
 def create_sample_data():
     """Create sample data for demo purposes"""

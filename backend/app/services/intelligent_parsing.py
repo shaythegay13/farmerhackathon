@@ -4,7 +4,6 @@ Intelligent CSV parsing service using Gemini for column mapping
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import date
-import google.generativeai as genai
 from app.services.llm import llm_service
 
 logger = logging.getLogger(__name__)

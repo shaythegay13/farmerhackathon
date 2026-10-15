@@ -1,5 +1,6 @@
-// API service for connecting frontend to Yieldly backend
-const API_BASE_URL = 'http://localhost:8001';
+// API service for connecting frontend to Yieldly backend.
+// Defaults to the same port start.py and uvicorn use. Override with VITE_API_BASE_URL.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -79,12 +80,14 @@ class YieldlyApiService {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
+      const headers = new Headers(options.headers);
+      if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
+      }
+
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
         ...options,
+        headers,
       });
 
       if (!response.ok) {
@@ -109,6 +112,35 @@ class YieldlyApiService {
   }
 
   // Farmer endpoints
+  async processFarmerData(csvData: Record<string, unknown>[]): Promise<ApiResponse<{
+    success: boolean;
+    message: string;
+    offers: Record<string, unknown>[];
+    mapping_info?: unknown;
+  }>> {
+    return this.request('/farmer/process_data', {
+      method: 'POST',
+      body: JSON.stringify({ csv_data: csvData }),
+    });
+  }
+
+  async sendBidsNow(
+    farmId: string | number,
+    radiusMiles: number
+  ): Promise<ApiResponse<{
+    success: boolean;
+    restaurants_reached: number;
+    message: string;
+  }>> {
+    const formData = new FormData();
+    formData.append('farm_id', String(farmId));
+    formData.append('radius_miles', String(radiusMiles));
+    return this.request('/farmer/send_bids_now', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
   async uploadFarmerOffers(
     csvFile: File,
     farmId: string,
@@ -128,6 +160,19 @@ class YieldlyApiService {
   }
 
   // Restaurant endpoints
+  async processRestaurantData(csvData: Record<string, unknown>[]): Promise<ApiResponse<{
+    success: boolean;
+    message: string;
+    menu_items: Record<string, unknown>[];
+    ingredients: Record<string, unknown>[];
+    mapping_info?: unknown;
+  }>> {
+    return this.request('/restaurant/process_data', {
+      method: 'POST',
+      body: JSON.stringify({ csv_data: csvData }),
+    });
+  }
+
   async uploadRestaurantMenu(
     menuCsvFile: File,
     ingredientsCsvFile: File,
@@ -165,15 +210,44 @@ class YieldlyApiService {
     return this.request<BidsResponse>(`/restaurant/bids?${params}`);
   }
 
+  async weeklyDemand(
+    menuItems: object[],
+    ingredients: object[],
+    safetyStockPct: number = 0.05
+  ): Promise<ApiResponse<{
+    demand: Array<{
+      produce_sku: string;
+      ingredient_name: string;
+      total_kg: number;
+      substitutable: boolean;
+      requires_organic: boolean;
+      safety_stock_pct: number;
+    }>;
+  }>> {
+    return this.request('/restaurant/weekly_demand', {
+      method: 'POST',
+      body: JSON.stringify({
+        menu_items: menuItems,
+        ingredients,
+        safety_stock_pct: safetyStockPct,
+      }),
+    });
+  }
+
   async optimizePlan(
     restaurantId: number,
     constraints: Constraints,
-    safetyStockPct: number = 0.05
+    safetyStockPct: number = 0.05,
+    menuItems?: object[],
+    ingredients?: object[]
   ): Promise<ApiResponse<OptimizationResponse>> {
     const payload = {
       restaurant_id: restaurantId,
       constraints,
       safety_stock_pct: safetyStockPct,
+      ...(menuItems && ingredients
+        ? { menu_items: menuItems, ingredients }
+        : {}),
     };
 
     return this.request<OptimizationResponse>('/restaurant/optimize_plan', {

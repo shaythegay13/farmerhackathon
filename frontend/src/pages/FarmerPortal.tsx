@@ -31,6 +31,8 @@ export default function FarmerPortal() {
   const [leadTime, setLeadTime] = useState([3]);
   const [autoSend, setAutoSend] = useState(true);
   const [preferOrganic, setPreferOrganic] = useState(false);
+  const [restaurantsReached, setRestaurantsReached] = useState<number | null>(null);
+  const [sendingBids, setSendingBids] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     search: "",
     sort: "price-low",
@@ -139,7 +141,7 @@ export default function FarmerPortal() {
         let value = values[index] || '';
         
         // Convert numeric fields
-        if (['unit_size', 'price_per_unit', 'available_qty', 'min_order_qty', 'delivery_fee_flat', 'lead_time_days'].includes(header)) {
+        if (['unit_size', 'price_per_unit', 'available_qty', 'min_order_qty', 'delivery_fee_flat', 'delivery_fee', 'lead_time_days'].includes(header)) {
           value = parseFloat(value) || 0;
         }
         
@@ -150,23 +152,68 @@ export default function FarmerPortal() {
         
         obj[header] = value;
       });
+      // Sample farmer_offers.csv names the column delivery_fee, not delivery_fee_flat.
+      if (typeof obj.delivery_fee_flat !== "number" && obj.delivery_fee !== undefined && obj.delivery_fee !== "") {
+        obj.delivery_fee_flat = typeof obj.delivery_fee === "number" ? obj.delivery_fee : parseFloat(obj.delivery_fee) || 0;
+      }
       return obj;
     });
   };
 
-  const sendBidsNow = () => {
-    toast({
-      title: "✅ Bids sent successfully!",
-      description: "14 restaurants notified. Check your Active Bids for updates.",
-    });
+  const sendBidsNow = async () => {
+    const farmFromOffer = offers.find((offer) => offer.farm_id)?.farm_id;
+    const farmId = farmFromOffer || "FARM001";
+    setSendingBids(true);
+    try {
+      const response = await yieldlyApi.sendBidsNow(farmId, deliveryRadius[0]);
+      if (response.success && response.data) {
+        setRestaurantsReached(response.data.restaurants_reached);
+        toast({
+          title: "Nearby restaurants counted",
+          description: response.data.message,
+        });
+      } else {
+        toast({
+          title: "Could not count restaurants",
+          description: response.error || "The API did not accept this farm.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Could not count restaurants",
+        description: "Failed to connect to backend",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingBids(false);
+    }
   };
 
-  const calculateLandedCost = (offer: FarmerOffer) => {
-    if (!offer || typeof offer.price_per_unit !== 'number' || typeof offer.unit_size !== 'number' || typeof offer.delivery_fee_flat !== 'number' || typeof offer.min_order_qty !== 'number') {
+  const largestOffer = useMemo(() => {
+    if (offers.length === 0) return null;
+    return offers.reduce((best, offer) =>
+      (offer.available_qty || 0) > (best.available_qty || 0) ? offer : best
+    );
+  }, [offers]);
+
+  const deliveryFeeOf = (offer: FarmerOffer & { delivery_fee?: number | string }) => {
+    if (typeof offer?.delivery_fee_flat === "number") return offer.delivery_fee_flat;
+    if (typeof offer?.delivery_fee === "number") return offer.delivery_fee;
+    if (typeof offer?.delivery_fee === "string" && offer.delivery_fee.trim() !== "") {
+      const parsed = parseFloat(offer.delivery_fee);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+
+  const calculateLandedCost = (offer: FarmerOffer & { delivery_fee?: number | string }) => {
+    const deliveryFee = deliveryFeeOf(offer);
+    if (!offer || typeof offer.price_per_unit !== 'number' || typeof offer.unit_size !== 'number' || deliveryFee === null || typeof offer.min_order_qty !== 'number' || offer.unit_size === 0 || offer.min_order_qty === 0) {
       return '0.00';
     }
     const allocatedQty = offer.min_order_qty * offer.unit_size;
-    const deliveryCostPerKg = offer.delivery_fee_flat / allocatedQty;
+    const deliveryCostPerKg = deliveryFee / allocatedQty;
     const unitCostPerKg = offer.price_per_unit / offer.unit_size;
     return (unitCostPerKg + deliveryCostPerKg).toFixed(2);
   };
@@ -234,7 +281,9 @@ export default function FarmerPortal() {
           <Card>
             <CardHeader>
               <CardTitle>Auto-Bid Settings</CardTitle>
-              <CardDescription>Configure how your bids are automatically sent to restaurants</CardDescription>
+              <CardDescription>
+                Radius is sent with the button below. Auto-send and organic preference are not saved.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
@@ -272,11 +321,11 @@ export default function FarmerPortal() {
               </div>
 
               <p className="text-sm text-muted-foreground">
-                🕐 Bids are refreshed daily at 7am
+                Counts restaurants that share the farm ZIP prefix. It does not email or notify them.
               </p>
 
-              <Button onClick={sendBidsNow} className="w-full sm:w-auto">
-                Send Bids Now
+              <Button onClick={sendBidsNow} className="w-full sm:w-auto" disabled={sendingBids}>
+                {sendingBids ? "Counting..." : "Send Bids Now"}
               </Button>
             </CardContent>
           </Card>
@@ -287,7 +336,9 @@ export default function FarmerPortal() {
               <Card>
                 <CardHeader>
                   <CardTitle>Active Bids</CardTitle>
-                  <CardDescription>Track your produce offers and bid performance</CardDescription>
+                  <CardDescription>
+                    Offer rows are the loaded CSV. The status column is a demo label, not a saved outcome.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <FilterBar filters={filters} onFiltersChange={setFilters} />
@@ -306,7 +357,7 @@ export default function FarmerPortal() {
                           <TableHead>MOQ</TableHead>
                           <TableHead>Expiry</TableHead>
                           <TableHead>Lead</TableHead>
-                          <TableHead>Status</TableHead>
+                          <TableHead>Status (demo)</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -324,7 +375,7 @@ export default function FarmerPortal() {
                                 ${calculateLandedCost(offer)}
                                 <WhyPopover
                                   reasons={[
-                                    `Landed cost = ($${offer.price_per_unit} / ${offer.unit_size}kg) + ($${offer.delivery_fee_flat} delivery / ${offer.min_order_qty * offer.unit_size}kg allocated)`,
+                                    `Landed cost = ($${offer.price_per_unit} / ${offer.unit_size}kg) + ($${deliveryFeeOf(offer) ?? 0} delivery / ${offer.min_order_qty * offer.unit_size}kg allocated)`,
                                   ]}
                                 />
                               </div>
@@ -354,6 +405,7 @@ export default function FarmerPortal() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg">Performance</CardTitle>
+                  <CardDescription>Reached count comes from Send Bids Now. Acceptance is not tracked.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center gap-3">
@@ -361,8 +413,8 @@ export default function FarmerPortal() {
                       <Users className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-2xl font-semibold">14</p>
-                      <p className="text-xs text-muted-foreground">Restaurants Reached</p>
+                      <p className="text-2xl font-semibold">{restaurantsReached === null ? "—" : restaurantsReached}</p>
+                      <p className="text-xs text-muted-foreground">Restaurants reached (from API)</p>
                     </div>
                   </div>
 
@@ -371,8 +423,8 @@ export default function FarmerPortal() {
                       <TrendingUp className="h-5 w-5 text-success" />
                     </div>
                     <div>
-                      <p className="text-2xl font-semibold">32%</p>
-                      <p className="text-xs text-muted-foreground">Bid Acceptance Rate</p>
+                      <p className="text-2xl font-semibold">Demo</p>
+                      <p className="text-xs text-muted-foreground">Acceptance rate is not tracked</p>
                     </div>
                   </div>
 
@@ -381,8 +433,8 @@ export default function FarmerPortal() {
                       <Package className="h-5 w-5 text-accent-foreground" />
                     </div>
                     <div>
-                      <p className="text-lg font-semibold">Tomato (Campari) 🍅</p>
-                      <p className="text-xs text-muted-foreground">Top SKU This Week</p>
+                      <p className="text-lg font-semibold">{largestOffer?.produce_name || "—"}</p>
+                      <p className="text-xs text-muted-foreground">Largest offer in this list</p>
                     </div>
                   </div>
                 </CardContent>

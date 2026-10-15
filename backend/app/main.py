@@ -5,19 +5,29 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime
 from typing import List, Optional
 import os
+from pathlib import Path
+from app.console import configure_stdio
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+configure_stdio()
+
+# Repo-root .env, then backend/.env so a local backend file can override.
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+_REPO_ROOT = _BACKEND_DIR.parent
+load_dotenv(_REPO_ROOT / ".env")
+load_dotenv(_BACKEND_DIR / ".env", override=True)
 
 from app.models import get_db, Farm, ProduceOffer, Restaurant, MenuItem, Ingredient
 from app.schemas import (
     UploadResponse, BidsResponse, OptimizationResponse, ExportResponse, 
     SendBidsResponse, BidOffer, PurchasePlanItem, MenuNudge, Constraints,
-    OptimizationPayload
+    OptimizationPayload, WeeklyDemandRequest, WeeklyDemandResponse,
 )
 # Old parsing system removed - using intelligent parsing instead
-from app.services.demand import compute_weekly_demand, get_menu_items_with_ingredients
+from app.services.demand import (
+    compute_weekly_demand, compute_weekly_demand_from_rows,
+    demand_lines, get_menu_items_with_ingredients,
+)
 from app.services.offers import (
     feasible_offers, get_all_offers, calculate_baseline_cost, 
     landed_cost_per_kg
@@ -61,7 +71,7 @@ async def llm_status():
     """Check LLM service status"""
     return {
         "enabled": llm_service.enabled,
-        "model": "gemini-2.0-flash-exp" if llm_service.enabled else None,
+        "model": llm_service.model_name if llm_service.enabled else None,
         "api_key_configured": bool(llm_service.api_key)
     }
 
@@ -109,16 +119,25 @@ async def process_farmer_data(
 
 # Old upload endpoints removed - using intelligent parsing endpoints instead
 
+def _farm_for_bid(db: Session, farm_id: str) -> Optional[Farm]:
+    """Resolve a numeric primary key or the string farm_id such as FARM001."""
+    token = (farm_id or "").strip()
+    if token.isdigit():
+        farm = db.query(Farm).filter(Farm.id == int(token)).first()
+        if farm:
+            return farm
+    return db.query(Farm).filter(Farm.farm_id == token).first()
+
+
 @app.post("/farmer/send_bids_now", response_model=SendBidsResponse)
 async def send_bids_now(
-    farm_id: int = Form(...),
+    farm_id: str = Form(...),
     radius_miles: int = Form(10),
     db: Session = Depends(get_db)
 ):
-    """Simulate sending bids to nearby restaurants"""
+    """Count restaurants that share the farm ZIP prefix. This does not notify anyone."""
     try:
-        # Get farm
-        farm = db.query(Farm).filter(Farm.id == farm_id).first()
+        farm = _farm_for_bid(db, farm_id)
         if not farm:
             raise HTTPException(status_code=404, detail="Farm not found")
         
@@ -130,7 +149,10 @@ async def send_bids_now(
         return SendBidsResponse(
             success=True,
             restaurants_reached=restaurants_in_area,
-            message=f"Bids sent to {restaurants_in_area} restaurants in {radius_miles} mile radius"
+            message=(
+                f"{restaurants_in_area} restaurants share this farm's ZIP prefix "
+                f"({radius_miles} mile radius setting). Nothing was emailed."
+            )
         )
         
     except Exception as e:
@@ -223,6 +245,43 @@ async def get_restaurant_bids(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/restaurant/weekly_demand", response_model=WeeklyDemandResponse)
+async def weekly_demand(payload: WeeklyDemandRequest):
+    """Demand for the menu currently on screen. Same helper the optimizer uses."""
+    if not payload.menu_items or not payload.ingredients:
+        raise HTTPException(status_code=400, detail="Menu items and ingredients are required")
+    return WeeklyDemandResponse(
+        demand=demand_lines(payload.menu_items, payload.ingredients, payload.safety_stock_pct)
+    )
+
+
+def _menu_views(payload: OptimizationPayload):
+    """Objects compute_nudges can read when the plan uses on-screen rows."""
+    from types import SimpleNamespace
+
+    menus = [
+        SimpleNamespace(
+            menu_item_id=row.menu_item_id,
+            menu_item_name=row.menu_item_name,
+            current_price=row.current_price,
+            target_food_cost_pct=row.target_food_cost_pct,
+            expected_weekly_orders=row.expected_weekly_orders,
+        )
+        for row in payload.menu_items or []
+    ]
+    ingredients = []
+    for row in payload.ingredients or []:
+        yield_pct = row.yield_pct / 100.0 if row.yield_pct > 1 else row.yield_pct
+        ingredients.append(SimpleNamespace(
+            menu_item_id=row.menu_item_id,
+            produce_sku=row.produce_sku,
+            ingredient_name=row.ingredient_name,
+            recipe_qty_per_portion_kg=row.recipe_qty_per_portion,
+            yield_pct=yield_pct,
+        ))
+    return menus, ingredients
+
+
 @app.post("/restaurant/optimize_plan", response_model=OptimizationResponse)
 async def optimize_purchase_plan(
     payload: OptimizationPayload,
@@ -240,8 +299,13 @@ async def optimize_purchase_plan(
         if not restaurant:
             raise HTTPException(status_code=404, detail="Restaurant not found")
         
-        # Compute weekly demand
-        demand_by_sku = compute_weekly_demand(restaurant_id, db, safety_stock_pct)
+        use_screen_menu = bool(payload.menu_items) and bool(payload.ingredients)
+        if use_screen_menu:
+            demand_by_sku = compute_weekly_demand_from_rows(
+                payload.menu_items, payload.ingredients, safety_stock_pct
+            )
+        else:
+            demand_by_sku = compute_weekly_demand(restaurant_id, db, safety_stock_pct)
         
         if not demand_by_sku:
             raise HTTPException(status_code=400, detail="No menu items or ingredients found")
@@ -263,9 +327,12 @@ async def optimize_purchase_plan(
         # Get unit costs for pricing
         unit_cost_by_sku = get_unit_cost_by_sku(plan_rows)
         
-        # Get menu items and ingredients for pricing
-        menu_items = db.query(MenuItem).filter(MenuItem.restaurant_id == restaurant_id).all()
-        ingredients = db.query(Ingredient).filter(Ingredient.restaurant_id == restaurant_id).all()
+        # Price nudges follow the same menu the demand table used.
+        if use_screen_menu:
+            menu_items, ingredients = _menu_views(payload)
+        else:
+            menu_items = db.query(MenuItem).filter(MenuItem.restaurant_id == restaurant_id).all()
+            ingredients = db.query(Ingredient).filter(Ingredient.restaurant_id == restaurant_id).all()
         
         # Compute menu nudges
         nudges = compute_nudges(menu_items, ingredients, unit_cost_by_sku)
@@ -465,4 +532,5 @@ async def load_sample_data():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    _port = int(os.environ.get("PORT", "").strip() or "8000")
+    uvicorn.run(app, host="0.0.0.0", port=_port)

@@ -113,10 +113,44 @@ class Constraints(BaseModel):
     organic_only: bool = False
     local_only: bool = False
 
+class MenuItemInput(BaseModel):
+    menu_item_id: str
+    menu_item_name: str = ""
+    current_price: float = 0
+    target_food_cost_pct: float = 0
+    expected_weekly_orders: float = 0
+
+class IngredientInput(BaseModel):
+    menu_item_id: str
+    produce_sku: str
+    ingredient_name: str = ""
+    recipe_qty_per_portion: float = 0
+    yield_pct: float = 1
+    substitutable: bool = False
+    requires_organic: bool = False
+
+class WeeklyDemandRequest(BaseModel):
+    menu_items: List[MenuItemInput]
+    ingredients: List[IngredientInput]
+    safety_stock_pct: float = 0.05
+
+class DemandLine(BaseModel):
+    produce_sku: str
+    ingredient_name: str
+    total_kg: float
+    substitutable: bool
+    requires_organic: bool
+    safety_stock_pct: float
+
+class WeeklyDemandResponse(BaseModel):
+    demand: List[DemandLine]
+
 class OptimizationPayload(BaseModel):
     restaurant_id: int
     constraints: Constraints
     safety_stock_pct: float = 0.05
+    menu_items: Optional[List[MenuItemInput]] = None
+    ingredients: Optional[List[IngredientInput]] = None
 
 class PlanRow(BaseModel):
     produce_sku: str

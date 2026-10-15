@@ -1,30 +1,48 @@
 import os
 import logging
 from typing import List, Dict, Optional, Tuple
-import google.generativeai as genai
+
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
+
+from app.console import configure_stdio
 from app.models import ProduceOffer, Ingredient
 
+configure_stdio()
+
 logger = logging.getLogger(__name__)
+
+# gemini-2.0-flash-exp is shut down. Google lists gemini-3.6-flash as the
+# replacement for the Gemini 2.0 Flash line.
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 
 class LLMService:
     """Service for LLM-powered semantic analysis and explanations"""
     
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
+        self.model_name = os.getenv("GEMINI_MODEL", "").strip() or DEFAULT_GEMINI_MODEL
         self.model = None
         self.enabled = False
-        
-        if self.api_key:
-            try:
-                genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
-                self.enabled = True
-                logger.info("✅ Gemini LLM service initialized")
-            except Exception as e:
-                logger.warning(f"❌ Failed to initialize Gemini LLM: {e}")
-                self.enabled = False
-        else:
+
+        if not self.api_key:
             logger.info("⚠️ GEMINI_API_KEY not found, LLM features disabled")
+            return
+
+        if genai is None:
+            logger.warning("⚠️ google-generativeai is not installed, LLM features disabled")
+            return
+
+        try:
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel(self.model_name)
+            self.enabled = True
+            logger.info("✅ Gemini LLM service initialized (%s)", self.model_name)
+        except Exception as e:
+            logger.warning(f"❌ Failed to initialize Gemini LLM: {e}")
+            self.enabled = False
     
     def semantic_ingredient_matching(self, restaurant_ingredients: List[Ingredient], 
                                    available_offers: List[ProduceOffer]) -> Dict[str, List[str]]:
@@ -196,8 +214,21 @@ Focus on maintaining profitability while being fair to customers.
     
     def _fallback_explanation(self, purchase_plan: List[Dict], savings_amount: float, 
                             constraints: Dict) -> str:
-        """Fallback explanation when LLM is unavailable"""
-        return f"Optimized sourcing plan saves ${savings_amount:.2f} weekly by selecting the most cost-effective suppliers while meeting freshness and quality requirements."
+        """Fallback explanation when LLM is unavailable.
+
+        savings_amount is baseline cost minus this plan. A negative value is a cost increase.
+        """
+        if savings_amount < -0.005:
+            return (
+                f"This plan costs ${abs(savings_amount):.2f} more per week than the unconstrained baseline "
+                "while meeting freshness and quality requirements."
+            )
+        if savings_amount > 0.005:
+            return (
+                f"This plan saves ${savings_amount:.2f} per week versus the unconstrained baseline "
+                "while meeting freshness and quality requirements."
+            )
+        return "This plan matches the unconstrained baseline weekly cost."
 
 # Global LLM service instance
 llm_service = LLMService()

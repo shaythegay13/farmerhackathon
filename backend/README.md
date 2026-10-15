@@ -14,7 +14,9 @@ AI-powered platform connecting farmers and restaurants for local food sourcing.
    ```bash
    python start.py
    ```
-   
+
+   The API listens on port 8000 unless `PORT` is set. The frontend uses the same default (`http://localhost:8000`), overridable with `VITE_API_BASE_URL`.
+
    Or manually:
    ```bash
    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -102,14 +104,14 @@ Required columns:
 
 - **API**: FastAPI with automatic OpenAPI documentation
 - **Database**: SQLite with SQLAlchemy ORM
-- **Processing**: Pandas for CSV parsing and data manipulation
+- **Processing**: CSV parsing in `app/services/intelligent_parsing.py` (header matching, with Gemini column mapping when a key is set)
 - **Optimization**: Greedy algorithm for purchase planning
-- **AI/LLM**: Gemini 2.0 Flash for semantic matching and natural language explanations
+- **AI/LLM**: Gemini 3.6 Flash for semantic matching and natural language explanations (optional)
 - **Storage**: File-based CSV storage in `/data/uploads` and `/data/exports`
 
 ## LLM Features (Optional)
 
-The system includes optional LLM-powered features using Google's Gemini 2.0 Flash model:
+The system includes optional LLM-powered features using Google's Gemini 3.6 Flash model (`gemini-3.6-flash`). Override the model with `GEMINI_MODEL`. The API still starts when `google-generativeai` is not installed or `GEMINI_API_KEY` is unset, and falls back to exact matching.
 
 ### Setup
 1. Get a Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)

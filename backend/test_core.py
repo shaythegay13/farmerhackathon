@@ -7,6 +7,10 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from app.console import configure_stdio
+
+configure_stdio()
+
 def test_imports():
     """Test that core modules can be imported"""
     try:
@@ -121,6 +125,30 @@ def test_optimization_logic():
         print(f"❌ Optimization error: {e}")
         return False
 
+def test_screen_menu_demand():
+    """On-screen menu rows and the optimizer share one demand helper."""
+    try:
+        print("\n🧪 Testing demand from on-screen menu rows...")
+        from types import SimpleNamespace
+        from app.services.demand import compute_weekly_demand_from_rows
+
+        menu = [SimpleNamespace(menu_item_id="SALAD001", expected_weekly_orders=50)]
+        ingredients = [SimpleNamespace(
+            menu_item_id="SALAD001",
+            produce_sku="ORG_LETTUCE",
+            recipe_qty_per_portion=0.15,
+            yield_pct=0.95,
+        )]
+        demand = compute_weekly_demand_from_rows(menu, ingredients, 0.05)
+        expected = 50 * (0.15 / 0.95) * 1.05
+        print(f"  ORG_LETTUCE demand: {demand['ORG_LETTUCE']:.4f} kg (expected: {expected:.4f})")
+        assert abs(demand["ORG_LETTUCE"] - expected) < 0.001
+        print("✅ On-screen demand matches the optimizer helper")
+        return True
+    except Exception as e:
+        print(f"❌ On-screen demand error: {e}")
+        return False
+
 def test_pricing_logic():
     """Test pricing calculations"""
     try:
@@ -162,6 +190,7 @@ def main():
         test_imports,
         test_unit_conversions,
         test_optimization_logic,
+        test_screen_menu_demand,
         test_pricing_logic
     ]
     

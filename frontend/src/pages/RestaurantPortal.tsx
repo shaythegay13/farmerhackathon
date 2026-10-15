@@ -41,6 +41,24 @@ interface DemandItem {
   safetyStock: number;
 }
 
+/** savings_vs_baseline is baseline cost minus plan cost. Negative means the plan costs more. */
+function describePlanDelta(delta: number): { label: string; increased: boolean } {
+  const amount = Math.abs(delta).toFixed(2);
+  if (delta < -0.005) {
+    return {
+      label: `Cost increase vs baseline: $${amount}/week`,
+      increased: true,
+    };
+  }
+  if (delta > 0.005) {
+    return {
+      label: `Savings vs baseline: $${amount}/week`,
+      increased: false,
+    };
+  }
+  return { label: "No change vs baseline", increased: false };
+}
+
 export default function RestaurantPortal() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [menuItems, setMenuItems] = useState<RestaurantMenuItem[]>([]);
@@ -222,36 +240,30 @@ export default function RestaurantPortal() {
     });
   };
 
-  const calculateDemand = () => {
-    const demandMap = new Map<string, DemandItem>();
+  const calculateDemand = async () => {
+    const response = await yieldlyApi.weeklyDemand(menuItems, ingredients, 0.05);
+    if (!response.success || !response.data) {
+      toast({
+        title: "Could not calculate demand",
+        description: response.error || "The API did not return demand for this menu.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    ingredients.forEach((ing) => {
-      const menuItem = menuItems.find((m) => m.menu_item_id === ing.menu_item_id);
-      if (!menuItem) return;
-
-      const rawQty = ing.recipe_qty_per_portion * menuItem.expected_weekly_orders;
-      const adjustedQty = rawQty / (ing.yield_pct / 100);
-
-      const existing = demandMap.get(ing.produce_sku);
-      if (existing) {
-        existing.totalKg += adjustedQty;
-      } else {
-        demandMap.set(ing.produce_sku, {
-          sku: ing.produce_sku,
-          ingredient: ing.ingredient_name,
-          totalKg: adjustedQty,
-          substitutable: ing.substitutable,
-          requiresOrganic: ing.requires_organic,
-          safetyStock: 10,
-        });
-      }
-    });
-
-    setDemand(Array.from(demandMap.values()));
+    const rows: DemandItem[] = response.data.demand.map((line) => ({
+      sku: line.produce_sku,
+      ingredient: line.ingredient_name,
+      totalKg: line.total_kg,
+      substitutable: line.substitutable,
+      requiresOrganic: line.requires_organic,
+      safetyStock: Math.round(line.safety_stock_pct * 100),
+    }));
+    setDemand(rows);
     fetchBids();
     toast({
       title: "✅ Demand calculated!",
-      description: `${demandMap.size} ingredients ready. Check out bids below to find the best deals.`,
+      description: `${rows.length} ingredients from this menu, including 5% safety stock. Optimize uses the same rows.`,
     });
   };
 
@@ -295,13 +307,19 @@ export default function RestaurantPortal() {
         local_only: false, // Could be based on filters.localRadius
       };
 
-      const response = await yieldlyApi.optimizePlan(restaurantId, constraints, 0.05);
+      const response = await yieldlyApi.optimizePlan(
+        restaurantId,
+        constraints,
+        0.05,
+        menuItems,
+        ingredients
+      );
 
       if (response.success && response.data) {
         setOptimizationResult(response.data);
         toast({
           title: "✅ Optimization complete!",
-          description: `Savings: $${Math.abs(response.data.savings_vs_baseline).toFixed(2)}/week`,
+          description: describePlanDelta(response.data.savings_vs_baseline).label,
         });
       } else {
         toast({
@@ -405,9 +423,12 @@ export default function RestaurantPortal() {
 
   const acceptPurchasePlan = () => {
     setAcceptedPlan(true);
+    const delta = optimizationResult
+      ? describePlanDelta(optimizationResult.savings_vs_baseline).label
+      : "No plan total is available.";
     toast({
       title: "✅ Purchase plan accepted!",
-      description: "You're saving $412/week. Export your purchase order below.",
+      description: `${delta}. Export your purchase order below.`,
     });
   };
 
@@ -638,9 +659,15 @@ export default function RestaurantPortal() {
           <CardHeader>
             <div className="flex items-center gap-3">
               <CardTitle>AI Suggested Purchase Plan</CardTitle>
-              <Badge className="bg-success/20 text-success-foreground gap-2 px-3 py-1">
+              <Badge
+                className={
+                  describePlanDelta(optimizationResult.savings_vs_baseline).increased
+                    ? "bg-destructive/15 text-destructive gap-2 px-3 py-1"
+                    : "bg-success/20 text-success-foreground gap-2 px-3 py-1"
+                }
+              >
                 <DollarSign className="h-3 w-3" />
-                Savings vs baseline: ${Math.abs(optimizationResult.savings_vs_baseline).toFixed(2)}/week
+                {describePlanDelta(optimizationResult.savings_vs_baseline).label}
               </Badge>
               <WhyPopover
                 reasons={[optimizationResult.baseline_explanation]}
